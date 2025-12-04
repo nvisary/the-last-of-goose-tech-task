@@ -139,41 +139,47 @@ export const processTap = async (
       return { userScore: 0, totalScore: round.totalScore };
     }
 
-    let userRound = await manager.findOne(UserRound, {
-      where: { userId: user.id, roundId: round.id },
-      lock: { mode: "pessimistic_write" },
-    });
-
-    if (!userRound) {
-      userRound = manager.create(UserRound, {
+    await manager
+      .createQueryBuilder()
+      .insert()
+      .into(UserRound)
+      .values({
         userId: user.id,
         roundId: round.id,
         taps: 0,
         score: 0,
-      });
-    }
+      })
+      .orIgnore()
+      .execute();
 
-      const currentTaps = userRound.taps || 0;
-      const newTaps = currentTaps + 1;
+    const userRound = await manager.findOne(UserRound, {
+      where: { userId: user.id, roundId: round.id },
+      lock: { mode: "pessimistic_write" },
+    });
 
-      const scoreToAdd = newTaps % 11 === 0 ? 10 : 1;
+    if (!userRound)
+      throw new Error("Critical error: UserRound not found after creation");
 
-      userRound.taps = newTaps;
-      userRound.score = (userRound.score || 0) + scoreToAdd;
+    const currentTaps = userRound.taps || 0;
+    const newTaps = currentTaps + 1;
 
-      await manager.save(userRound);
+    const scoreToAdd = newTaps % 11 === 0 ? 10 : 1;
 
-      await manager.increment(Round, { id: roundId }, "totalScore", scoreToAdd);
+    userRound.taps = newTaps;
+    userRound.score = (userRound.score || 0) + scoreToAdd;
 
-      const updatedRound = await manager.findOne(Round, {
-        where: { id: roundId },
-      });
+    await manager.save(userRound);
 
-      return {
-        userScore: userRound.score,
-        myTaps: userRound.taps,
-        totalScore: updatedRound!.totalScore,
-      };
-    }
-  );
+    await manager.increment(Round, { id: roundId }, "totalScore", scoreToAdd);
+
+    const updatedRound = await manager.findOne(Round, {
+      where: { id: roundId },
+    });
+
+    return {
+      userScore: userRound.score,
+      myTaps: userRound.taps,
+      totalScore: updatedRound!.totalScore,
+    };
+  });
 };
