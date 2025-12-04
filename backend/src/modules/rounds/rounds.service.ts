@@ -126,33 +126,32 @@ export const processTap = async (
   roundId: string,
   user: UserPayload
 ): Promise<{ userScore: number; totalScore: number } | null> => {
-  return AppDataSource.transaction(
-    "SERIALIZABLE",
-    async (manager: EntityManager) => {
-      const round = await manager.findOne(Round, {
-        where: { id: roundId },
+  return AppDataSource.transaction(async (manager: EntityManager) => {
+    const round = await manager.findOne(Round, {
+      where: { id: roundId },
+    });
+
+    if (!round || round.status !== RoundStatus.ACTIVE) {
+      throw new Error("Round is not active");
+    }
+
+    if (user.role === "NIKITA") {
+      return { userScore: 0, totalScore: round.totalScore };
+    }
+
+    let userRound = await manager.findOne(UserRound, {
+      where: { userId: user.id, roundId: round.id },
+      lock: { mode: "pessimistic_write" },
+    });
+
+    if (!userRound) {
+      userRound = manager.create(UserRound, {
+        userId: user.id,
+        roundId: round.id,
+        taps: 0,
+        score: 0,
       });
-
-      if (!round || round.status !== RoundStatus.ACTIVE) {
-        throw new Error("Round is not active");
-      }
-
-      if (user.role === "NIKITA") {
-        return { userScore: 0, totalScore: round.totalScore };
-      }
-
-      let userRound = await manager.findOne(UserRound, {
-        where: { userId: user.id, roundId: round.id },
-      });
-
-      if (!userRound) {
-        userRound = manager.create(UserRound, {
-          userId: user.id,
-          roundId: round.id,
-          taps: 0,
-          score: 0,
-        });
-      }
+    }
 
       const currentTaps = userRound.taps || 0;
       const newTaps = currentTaps + 1;
